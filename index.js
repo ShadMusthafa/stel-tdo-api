@@ -709,14 +709,69 @@ app.post('/api/insert/consumptionData', async function (req, res) {
             console.log("loacalSequenceNumber= "+localSequence);
             //var queryString="select * from Z_EMPLOYEE where EMP_ID='" + eid + "' and EMP_NAME='"+ename+"'";
             //console.log("/api/insert/empDetails SQL :" + queryString);
-            var queryString = "insert into Z_CONSUMPTION (PLANT,ORDER_NO,OPERATOR,BOM,BOM_VERSION,COMPONENT,COMPONENT_VERSION,RESOURCE,WORKCENTER,TARGET,LOWER_TOLERANCE,UPPER_TOLERANCE,QUANTITY,PORTIONING,ERP_BOM,WORKCENTER_DESCRIPTION,HEADER_MATERIAL,HEADER_MATERIAL_DESCRIPTION,COMPONENT_DESCRIPTION,ORDER_STATUS,UNIT_OF_MEASURE,BATCH_NUMBER,OPERATION,LOCAL_SEQUENCE,STORAGE_LOCATION) values('" + plant + "','" + order + "','" + operator + "','" + bom + "','" +bomVersion + "','"+component+"','"+componentVersion+"','"+resource+"','"+workcenter+"','"+target+"','"+minTolerance+"','"+maxTolerance+"','"+qty+"','"+portioning+"','"+erpBom+"','"+workcenterDesc+"','"+headerMaterial+"','"+headerMaterialDesc+"','"+componentDescription+"','"+orderStatus+"','"+uom+"','"+batch+"','"+operation+"','"+localSequence+"','"+storageLocation+"')";
-            console.log("/api/insert/consumptionData SQL :" + queryString);
-            dbConnection.exec(queryString, function (err, result) {
-            if (err) throw err;
-            console.log(bom + "- consumption  Data inserted successfully");
-            res.send(bom + "- consumption  Data inserted successfully");
-            dbConnection.disconnect();
-          });
+
+            /* ++BOC Shad Musthafa - Tare weight calculation */
+            var currentGrossWeight = parseFloat(req.body.currentGrossWeight),
+                tareActualWeight = 0;
+            if(currentGrossWeight && parseFloat(currentGrossWeight) > 0){
+                //Query to get the last consumption record 
+                var queryString = 
+                    `select PLANT, OPERATOR, WORKCENTER, COMPONENT, RESOURCE, CONSUMPTION_DATE, QUANTITY,
+                        lag(CURRENT_GROSS_WEIGHT) over (partition by PLANT, OPERATOR, BATCH_NUMBER, BOM, BOM_VERSION, WORKCENTER, COMPONENT, COMPONENT_VERSION, RESOURCE  order by CONSUMPTION_DATE) as PREV_GROSS_WEIGHT
+                    from Z_CONSUMPTION
+                    where PLANT = '${plant}' 
+                        and OPERATOR = '${operator}'
+                        and WORKCENTER = '${workcenter}'
+                        and COMPONENT = '${component}'
+                        and RESOURCE = '${resource}'
+                    order by CONSUMPTION_DATE DESC
+                    limit 1`
+                dbConnection.exec(queryString, function(err, result){
+                    if(err) throw err;
+                    console.log("Previous consumption check ->", JSON.stringify(result));
+                    
+                    /*  Calculate the tare weight
+                         - If no previous consumption for the component with resource and operator mapping then current consumption is tare
+                         - If previous consumption available and
+                            - current gross weight less than previous       -> Not tare relevant
+                            - current gross weight greater than previous    -> Tare calculated
+                     */
+                    if(result && result.length > 0){
+                        var fPreviousGrossWeight = parseFloat(result[0].PREV_GROSS_WEIGHT);
+                        console.log("SMDEV Tare check ->", currentGrossWeight, fPreviousGrossWeight);
+                        if(fPreviousGrossWeight && currentGrossWeight > fPreviousGrossWeight){
+                            tareActualWeight = currentGrossWeight + parseFloat(qty);
+                        }                        
+                    }else{
+                        tareActualWeight = currentGrossWeight + parseFloat(qty);
+                        console.log("SMDEV Calc default ->", tareActualWeight);
+                    }
+
+                    console.log("SMDEV Tare WT ->", tareActualWeight);
+
+                    var queryString = "insert into Z_CONSUMPTION (PLANT,ORDER_NO,OPERATOR,BOM,BOM_VERSION,COMPONENT,COMPONENT_VERSION,RESOURCE,WORKCENTER,TARGET,LOWER_TOLERANCE,UPPER_TOLERANCE,QUANTITY,PORTIONING,ERP_BOM,WORKCENTER_DESCRIPTION,HEADER_MATERIAL,HEADER_MATERIAL_DESCRIPTION,COMPONENT_DESCRIPTION,ORDER_STATUS,UNIT_OF_MEASURE,BATCH_NUMBER,OPERATION,LOCAL_SEQUENCE,STORAGE_LOCATION,CURRENT_GROSS_WEIGHT,TARE_ACTUAL_WEIGHT) values('" + plant + "','" + order + "','" + operator + "','" + bom + "','" +bomVersion + "','"+component+"','"+componentVersion+"','"+resource+"','"+workcenter+"','"+target+"','"+minTolerance+"','"+maxTolerance+"','"+qty+"','"+portioning+"','"+erpBom+"','"+workcenterDesc+"','"+headerMaterial+"','"+headerMaterialDesc+"','"+componentDescription+"','"+orderStatus+"','"+uom+"','"+batch+"','"+operation+"','"+localSequence+"','"+storageLocation+"','" + currentGrossWeight + "','" + tareActualWeight + "')";
+            
+                    console.log("/api/insert/consumptionData SQL :" + queryString);
+                    dbConnection.exec(queryString, function (err, result) {
+                        if (err) throw err;
+                        console.log(bom + "- consumption  Data inserted successfully");
+                        res.send(bom + "- consumption  Data inserted successfully");
+                        dbConnection.disconnect();
+                    });
+                })
+            }
+            // var queryString = "insert into Z_CONSUMPTION (PLANT,ORDER_NO,OPERATOR,BOM,BOM_VERSION,COMPONENT,COMPONENT_VERSION,RESOURCE,WORKCENTER,TARGET,LOWER_TOLERANCE,UPPER_TOLERANCE,QUANTITY,PORTIONING,ERP_BOM,WORKCENTER_DESCRIPTION,HEADER_MATERIAL,HEADER_MATERIAL_DESCRIPTION,COMPONENT_DESCRIPTION,ORDER_STATUS,UNIT_OF_MEASURE,BATCH_NUMBER,OPERATION,LOCAL_SEQUENCE,STORAGE_LOCATION) values('" + plant + "','" + order + "','" + operator + "','" + bom + "','" +bomVersion + "','"+component+"','"+componentVersion+"','"+resource+"','"+workcenter+"','"+target+"','"+minTolerance+"','"+maxTolerance+"','"+qty+"','"+portioning+"','"+erpBom+"','"+workcenterDesc+"','"+headerMaterial+"','"+headerMaterialDesc+"','"+componentDescription+"','"+orderStatus+"','"+uom+"','"+batch+"','"+operation+"','"+localSequence+"','"+storageLocation+"')";
+            // var queryString = "insert into Z_CONSUMPTION (PLANT,ORDER_NO,OPERATOR,BOM,BOM_VERSION,COMPONENT,COMPONENT_VERSION,RESOURCE,WORKCENTER,TARGET,LOWER_TOLERANCE,UPPER_TOLERANCE,QUANTITY,PORTIONING,ERP_BOM,WORKCENTER_DESCRIPTION,HEADER_MATERIAL,HEADER_MATERIAL_DESCRIPTION,COMPONENT_DESCRIPTION,ORDER_STATUS,UNIT_OF_MEASURE,BATCH_NUMBER,OPERATION,LOCAL_SEQUENCE,STORAGE_LOCATION,CURRENT_GROSS_WEIGHT,TARE_ACTUAL_WEIGHT) values('" + plant + "','" + order + "','" + operator + "','" + bom + "','" +bomVersion + "','"+component+"','"+componentVersion+"','"+resource+"','"+workcenter+"','"+target+"','"+minTolerance+"','"+maxTolerance+"','"+qty+"','"+portioning+"','"+erpBom+"','"+workcenterDesc+"','"+headerMaterial+"','"+headerMaterialDesc+"','"+componentDescription+"','"+orderStatus+"','"+uom+"','"+batch+"','"+operation+"','"+localSequence+"','"+storageLocation+"','" + currentGrossWeight + "','" + tareActualWeight + "')";
+            
+            // /* ++EOC Shad Musthafa - Tare Weight Calculation */
+            
+            // console.log("/api/insert/consumptionData SQL :" + queryString);
+            // dbConnection.exec(queryString, function (err, result) {
+            //     if (err) throw err;
+            //     console.log(bom + "- consumption  Data inserted successfully");
+            //     res.send(bom + "- consumption  Data inserted successfully");
+            //     dbConnection.disconnect();
+            // });
         });
     } else
         res.send("Request Body can't be empty");
@@ -966,7 +1021,8 @@ app.post('/api/insertAndUpdate/personalizedTolerances', async function(req, res)
 
             var active = 1;
             console.log("type=" + typeof(active));
-            var queryString = "select * from Z_PERSONALIZED_TOLERANCES where PLANT='" + plant + "' and MATERIAL='" + material + "' and ERP_BOM='" + erpBOM + "' and ERP_SEQUENCE='" + erpSequence + "' and OPERATOR='" + operator + "' and WORKCENTER='" + workcenter + "' and COMPONENT='" + component + "'and COMPONENT_VERSION='" + componentVersion + "'and BOM='" + bom + "'and BOM_VERSION='" + bomVersion + "'and \"ORDER\"='" + order + "'and ACTIVE='" + active + "'";
+            // var queryString = "select * from Z_PERSONALIZED_TOLERANCES where PLANT='" + plant + "' and MATERIAL='" + material + "' and ERP_BOM='" + erpBOM + "' and ERP_SEQUENCE='" + erpSequence + "' and OPERATOR='" + operator + "' and WORKCENTER='" + workcenter + "' and COMPONENT='" + component + "'and COMPONENT_VERSION='" + componentVersion + "'and BOM='" + bom + "'and BOM_VERSION='" + bomVersion + "'and \"ORDER\"='" + order + "'and ACTIVE='" + active + "'";
+            var queryString = "select * from Z_PERSONALIZED_TOLERANCES where PLANT='" + plant + "' and MATERIAL='" + material + "' and ERP_BOM='" + erpBOM + "' and OPERATOR='" + operator + "' and WORKCENTER='" + workcenter + "' and COMPONENT='" + component + "'and COMPONENT_VERSION='" + componentVersion + "'and BOM='" + bom + "'and BOM_VERSION='" + bomVersion + "'and \"ORDER\"='" + order + "'and ACTIVE='" + active + "'";
             console.log("/api/insertAndUpdate/personalizedTolerances SQL :" + queryString);
             dbConnection.exec(queryString, function(err, result) {
                 if (err) throw err;

@@ -1191,6 +1191,49 @@ app.post('/api/get/realTimeConsumptionData', async function (req, res) {
   } else res.send("Request Body can't be empty");
 });
 
+app.get('/api/get/tareData', async function (req, res, next) {
+  console.log('DBAPI | Info | GET | TARE_DATA | Get Tare Information Handler');
+
+  //If the mandatory parameters are not available, thorw error
+  if (!req.query.plant || !req.query.resource || !req.query.operator || !req.query.orderNo || !req.query.component) {
+    var oError = new Error('Required query params missing');
+    oError.status = 400;
+    throw oError;
+  }
+
+  var sPlant = req.query.plant,
+    sResource = req.query.resource,
+    sOperator = req.query.operator,
+    sOrderNo = req.query.orderNo,
+    sComponent = req.query.component,
+    sFromDateTime = req.query.fromTimestamp;
+
+  var sQuery = `SELECT plant, resource, operator, order_no, component, consumption_date, tare_actual_weight
+                  FROM Z_CONSUMPTION
+                  WHERE plant = '${sPlant}'
+                    and resource = '${sResource}'
+                    and operator = '${sOperator}'
+                    and order_no = '${sOrderNo}'
+                    and component = '${sComponent}'
+                    ${sFromDateTime ? 'and consumption_date > \'' + sFromDateTime  + '\'': ''}
+                    and tare_actual_weight > 0 
+                  ORDER BY consumption_date desc`;
+
+  //Open connection to db
+  var dbConnection = hana.createConnection();
+  //Log query to console
+  console.log('DBAPI | Info | GET | TARE_DATA | SQL Query| ' + sQuery);
+  dbConnection.connect(dapConnOptions, function (err) {
+    dbConnection.exec(sQuery, function (err, result) {
+      if (err) throw err;
+      console.log('DBAPI | Info | GET | TARE_DATA | Result | ' + JSON.stringify(result));
+      console.log('DBAPI | Info | GET | TARE_DATA | Consumption Details Fetched successfully');
+      res.send(result);
+      dbConnection.disconnect();
+    });
+  });
+});
+
 /*
 app.post('/api/get/realTimeConsumptionData', async function (req, res) {
     console.log("Inside /api/get/realTimeConsumptionData POST method");
@@ -1289,6 +1332,32 @@ app.post('/api/insertAndUpdate/personalizedTolerances', async function (req, res
           var resource = result[0].RESOURCE;
           var previoushandle = result[0].HANDLE;
           var cycleCountForTDO = result[0].COUNT_FOR_TDO;
+          // var queryString =
+          //   "UPDATE Z_PERSONALIZED_TOLERANCES SET ACTIVE=0 where PLANT='" +
+          //   plant +
+          //   "' and MATERIAL='" +
+          //   material +
+          //   "' and ERP_BOM='" +
+          //   erpBOM +
+          //   "' and ERP_SEQUENCE='" +
+          //   erpSequence +
+          //   "' and OPERATOR='" +
+          //   operator +
+          //   "' and WORKCENTER='" +
+          //   workcenter +
+          //   "' and COMPONENT='" +
+          //   component +
+          //   "'and COMPONENT_VERSION='" +
+          //   componentVersion +
+          //   "'and BOM='" +
+          //   bom +
+          //   "'and BOM_VERSION='" +
+          //   bomVersion +
+          //   '\'and "ORDER"=\'' +
+          //   order +
+          //   "'and ACTIVE='" +
+          //   active +
+          //   "'";
           var queryString =
             "UPDATE Z_PERSONALIZED_TOLERANCES SET ACTIVE=0 where PLANT='" +
             plant +
@@ -1296,8 +1365,6 @@ app.post('/api/insertAndUpdate/personalizedTolerances', async function (req, res
             material +
             "' and ERP_BOM='" +
             erpBOM +
-            "' and ERP_SEQUENCE='" +
-            erpSequence +
             "' and OPERATOR='" +
             operator +
             "' and WORKCENTER='" +
@@ -1319,8 +1386,58 @@ app.post('/api/insertAndUpdate/personalizedTolerances', async function (req, res
           dbConnection.exec(queryString, function (err, result) {
             if (err) throw err;
             console.log(result);
+            // var queryString =
+            //   'insert into Z_PERSONALIZED_TOLERANCES (PLANT,"ORDER",MATERIAL,OPERATOR,WORKCENTER,ERP_BOM,ERP_SEQUENCE,BOM,BOM_VERSION,COMPONENT,COMPONENT_VERSION,TARGET,LOWER_TOLERANCE,UPPER_TOLERANCE,SCALE_FACTOR,MEAN_GAURD_PLUS,MEAN_GAURD_MINUS,ACTIVE,COUNT_FOR_TDO,RESOURCE,PREVIOUS_HANDLE,CONSECUTIVE_THRESHOLD_COUNT,CUMULATIVE_THRESHOLD_COUNT,CUMULATIVE_CONSUMPTION_LIMIT) values(\'' +
+            //   plant +
+            //   "','" +
+            //   order +
+            //   "','" +
+            //   material +
+            //   "','" +
+            //   operator +
+            //   "','" +
+            //   workcenter +
+            //   "','" +
+            //   erpBOM +
+            //   "','" +
+            //   erpSequence +
+            //   "','" +
+            //   bom +
+            //   "','" +
+            //   bomVersion +
+            //   "','" +
+            //   component +
+            //   "','" +
+            //   componentVersion +
+            //   "','" +
+            //   target +
+            //   "','" +
+            //   lowerTolerance * 1000 +
+            //   "','" +
+            //   upperTolerance * 1000 +
+            //   "','" +
+            //   scaleFactor +
+            //   "','" +
+            //   meanGaurdPlus +
+            //   "','" +
+            //   meanGaurdMinus +
+            //   "','" +
+            //   active +
+            //   "','" +
+            //   tdoAdjustmentCycle +
+            //   "','" +
+            //   resource +
+            //   "','" +
+            //   previoushandle +
+            //   "','" +
+            //   consecutiveThreshold +
+            //   "','" +
+            //   cumulativeThreshold +
+            //   "','" +
+            //   cumulativeCunsumption +
+            //   "')";
             var queryString =
-              'insert into Z_PERSONALIZED_TOLERANCES (PLANT,"ORDER",MATERIAL,OPERATOR,WORKCENTER,ERP_BOM,ERP_SEQUENCE,BOM,BOM_VERSION,COMPONENT,COMPONENT_VERSION,TARGET,LOWER_TOLERANCE,UPPER_TOLERANCE,SCALE_FACTOR,MEAN_GAURD_PLUS,MEAN_GAURD_MINUS,ACTIVE,COUNT_FOR_TDO,RESOURCE,PREVIOUS_HANDLE,CONSECUTIVE_THRESHOLD_COUNT,CUMULATIVE_THRESHOLD_COUNT,CUMULATIVE_CONSUMPTION_LIMIT) values(\'' +
+              'insert into Z_PERSONALIZED_TOLERANCES (PLANT,"ORDER",MATERIAL,OPERATOR,WORKCENTER,ERP_BOM,BOM,BOM_VERSION,COMPONENT,COMPONENT_VERSION,TARGET,LOWER_TOLERANCE,UPPER_TOLERANCE,SCALE_FACTOR,MEAN_GAURD_PLUS,MEAN_GAURD_MINUS,ACTIVE,COUNT_FOR_TDO,RESOURCE,PREVIOUS_HANDLE,CONSECUTIVE_THRESHOLD_COUNT,CUMULATIVE_THRESHOLD_COUNT,CUMULATIVE_CONSUMPTION_LIMIT) values(\'' +
               plant +
               "','" +
               order +
@@ -1332,8 +1449,6 @@ app.post('/api/insertAndUpdate/personalizedTolerances', async function (req, res
               workcenter +
               "','" +
               erpBOM +
-              "','" +
-              erpSequence +
               "','" +
               bom +
               "','" +

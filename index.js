@@ -738,8 +738,8 @@ app.post('/api/userCal/claculateTolerance', async function (req, res) {
         bom +
         "','" +
         erpBOM +
-        "','" +
-        erpSequence +
+        // "','" +
+        // erpSequence +
         "','" +
         bomVersion +
         "','" +
@@ -764,7 +764,7 @@ app.post('/api/userCal/claculateTolerance', async function (req, res) {
 app.post('/api/insert/consumptionData', async function (req, res) {
   console.log('Inside /api/insert/consumptionData POST method');
   if (req.body != undefined) {
-    console.log('Request Body=' + req.body);
+    console.log('Consumption Request Body=' + JSON.stringify(req.body));
     var dbConnection = hana.createConnection();
     console.log('DB Connection Object : ' + dbConnection);
     dbConnection.connect(dapConnOptions, function (err) {
@@ -805,10 +805,12 @@ app.post('/api/insert/consumptionData', async function (req, res) {
       /* ++BOC Shad Musthafa - Tare weight calculation */
       var currentGrossWeight = parseFloat(req.body.currentGrossWeight),
         tareActualWeight = 0;
-      if (currentGrossWeight && parseFloat(currentGrossWeight) > 0) {
+      // if (currentGrossWeight && parseFloat(currentGrossWeight) >= 0) {
+      if (parseFloat(currentGrossWeight) >= 0) {
         //Query to get the last consumption record
+        // lag(CURRENT_GROSS_WEIGHT) over (partition by PLANT, OPERATOR, BATCH_NUMBER, BOM, BOM_VERSION, WORKCENTER, COMPONENT, COMPONENT_VERSION, RESOURCE  order by CONSUMPTION_DATE) as PREV_GROSS_WEIGHT
         var queryString = `select PLANT, OPERATOR, WORKCENTER, COMPONENT, RESOURCE, CONSUMPTION_DATE, QUANTITY,
-                        lag(CURRENT_GROSS_WEIGHT) over (partition by PLANT, OPERATOR, BATCH_NUMBER, BOM, BOM_VERSION, WORKCENTER, COMPONENT, COMPONENT_VERSION, RESOURCE  order by CONSUMPTION_DATE) as PREV_GROSS_WEIGHT
+                        CURRENT_GROSS_WEIGHT as PREV_GROSS_WEIGHT
                     from Z_CONSUMPTION
                     where PLANT = '${plant}' 
                         and OPERATOR = '${operator}'
@@ -822,15 +824,16 @@ app.post('/api/insert/consumptionData', async function (req, res) {
           console.log('Previous consumption check ->', JSON.stringify(result));
 
           /*  Calculate the tare weight
-                         - If no previous consumption for the component with resource and operator mapping then current consumption is tare
-                         - If previous consumption available and
-                            - current gross weight less than previous       -> Not tare relevant
-                            - current gross weight greater than previous    -> Tare calculated
-                     */
+              - If no previous consumption for the component with resource and operator mapping then current consumption is tare
+              - If previous consumption available and
+                - current gross weight less than previous       -> Not tare relevant
+                - current gross weight greater than previous    -> Tare calculated
+          */
           if (result && result.length > 0) {
             var fPreviousGrossWeight = parseFloat(result[0].PREV_GROSS_WEIGHT);
-            console.log('SMDEV Tare check ->', currentGrossWeight, fPreviousGrossWeight);
-            if (fPreviousGrossWeight && currentGrossWeight > fPreviousGrossWeight) {
+            // console.log('SMDEV Tare check ->', currentGrossWeight, fPreviousGrossWeight);
+            console.log(`SMDEV Tare check -> Current: ${currentGrossWeight}, Previous: ${fPreviousGrossWeight}`);
+            if (parseFloat(fPreviousGrossWeight) >= 0 && currentGrossWeight > fPreviousGrossWeight) {
               tareActualWeight = currentGrossWeight + parseFloat(qty);
             }
           } else {
@@ -1157,38 +1160,70 @@ app.post('/api/get/realTimeConsumptionData', async function (req, res) {
       var order = req.body.order;
       var component = req.body.component;
       var fromDateandTime = req.body.fromDateAndTime;
-      var queryString =
-        "select (select count(*) from Z_CONSUMPTION where TO_DATE( CONSUMPTION_DATE ) = CURRENT_DATE AND PLANT='" +
-        plant +
-        "' AND COMPONENT='" +
-        component +
-        "'  AND OPERATOR='" +
-        operator +
-        "' AND ORDER_NO='" +
-        order +
-        "') AS PORTION_COUNT,TO_DECIMAL(UPPER_TOLERANCE/1000,10,4) AS UPPER_TOL_IN_KG,TO_DECIMAL(LOWER_TOLERANCE/1000,10,4) AS LOWER_TOL_IN_KG,TO_DECIMAL(QUANTITY/1000,10,4) AS QTY_IN_KG,TO_DECIMAL(TARGET/1000,10,4) AS TARGET_IN_KG , * from Z_CONSUMPTION where PLANT='" +
-        plant +
-        "' AND RESOURCE='" +
-        resource +
-        "'  AND COMPONENT='" +
-        component +
-        "'  AND OPERATOR='" +
-        operator +
-        "' AND ORDER_NO='" +
-        order +
-        "' AND CONSUMPTION_DATE >= '" +
-        fromDateandTime +
-        "'";
-      console.log('/api/get/realTimeConsumptionData SQL :' + queryString);
+      // var queryString =
+      //   "select (select count(*) from Z_CONSUMPTION where TO_DATE( CONSUMPTION_DATE ) = CURRENT_DATE AND PLANT='" +
+      //   plant +
+      //   "' AND COMPONENT='" +
+      //   component +
+      //   "'  AND OPERATOR='" +
+      //   operator +
+      //   "' AND ORDER_NO='" +
+      //   order +
+      //   "') AS PORTION_COUNT,TO_DECIMAL(UPPER_TOLERANCE/1000,10,4) AS UPPER_TOL_IN_KG,TO_DECIMAL(LOWER_TOLERANCE/1000,10,4) AS LOWER_TOL_IN_KG,TO_DECIMAL(QUANTITY/1000,10,4) AS QTY_IN_KG,TO_DECIMAL(TARGET/1000,10,4) AS TARGET_IN_KG , * from Z_CONSUMPTION where PLANT='" +
+      //   plant +
+      //   "' AND RESOURCE='" +
+      //   resource +
+      //   "'  AND COMPONENT='" +
+      //   component +
+      //   "'  AND OPERATOR='" +
+      //   operator +
+      //   "' AND ORDER_NO='" +
+      //   order +
+      //   "' AND CONSUMPTION_DATE >= '" +
+      //   fromDateandTime +
+      //   "'";
+
+      /* ++BOC Shad Musthafa - Query update
+          - Use window function to capture portion_count
+          - Join Z_BOM_TOLERANCES table to capture BOM tolerance data
+      */
+
+      var queryString = `
+        SELECT
+          count( quantity ) over (partition by cons.plant, cons.resource, cons.component, cons.operator, cons.order_no) as PORTION_COUNT,
+          TO_DECIMAL(cons.UPPER_TOLERANCE / 1000, 10, 4) AS UPPER_TOL_IN_KG,
+          TO_DECIMAL(cons.LOWER_TOLERANCE / 1000, 10, 4) AS LOWER_TOL_IN_KG,
+          TO_DECIMAL(QUANTITY / 1000, 10, 4) AS QTY_IN_KG,
+          TO_DECIMAL(cons.TARGET / 1000, 10, 4) AS TARGET_IN_KG,
+          *,
+          TO_DECIMAL(bom.upper_tolerance / 1000, 10, 4) AS BOM_UPPER_TOL,
+          TO_DECIMAL(bom.lower_tolerance / 1000, 10, 4) AS BOM_LOWER_TOL
+        FROM Z_CONSUMPTION as cons
+        left join z_bom_tolerances as bom
+          on bom.plant = cons.plant
+          and bom.bom = cons.erp_bom
+          and bom.component = cons.component
+        WHERE
+            cons.PLANT = '${plant}'
+            AND cons.RESOURCE = '${resource}'
+            AND cons.COMPONENT = '${component}'
+            AND cons.OPERATOR = '${operator}'
+            AND cons.ORDER_NO = '${order}'
+            AND CONSUMPTION_DATE >= '${fromDateandTime}';`;
+      // console.log('/api/get/realTimeConsumptionData SQL :' + queryString);
+      console.log('DBAPI | Info | GET | realTimeConsumptionData | Realtime consumption query \n' + JSON.stringify(queryString));
+
       dbConnection.exec(queryString, function (err, result) {
         if (err) throw err;
-        console.log(result);
-        console.log('Consumption Details Fetched successfully');
+        // console.log(result);
+        // console.log('Consumption Details Fetched successfully');
+        console.log('DBAPI | Info | GET | realTimeConsumptionData | Consumption Details Fetched successfully \n' + JSON.stringify(result));
         res.send(result);
         dbConnection.disconnect();
       });
     });
   } else res.send("Request Body can't be empty");
+  /* ++EOC Shad Musthafa - Query update*/
 });
 
 app.get('/api/get/tareData', async function (req, res, next) {
@@ -1208,21 +1243,22 @@ app.get('/api/get/tareData', async function (req, res, next) {
     sComponent = req.query.component,
     sFromDateTime = req.query.fromTimestamp;
 
-  var sQuery = `SELECT plant, resource, operator, order_no, component, consumption_date, tare_actual_weight
+  var sQuery = `SELECT plant, resource, operator, order_no, component, consumption_date, 
+                  TO_DECIMAL(tare_actual_weight / 1000, 10, 4) AS TARE_ACTUAL_WEIGHT          
                   FROM Z_CONSUMPTION
                   WHERE plant = '${sPlant}'
                     and resource = '${sResource}'
                     and operator = '${sOperator}'
                     and order_no = '${sOrderNo}'
                     and component = '${sComponent}'
-                    ${sFromDateTime ? 'and consumption_date > \'' + sFromDateTime  + '\'': ''}
+                    ${sFromDateTime ? "and consumption_date > '" + sFromDateTime + "'" : ''}
                     and tare_actual_weight > 0 
                   ORDER BY consumption_date desc`;
 
   //Open connection to db
   var dbConnection = hana.createConnection();
   //Log query to console
-  console.log('DBAPI | Info | GET | TARE_DATA | SQL Query| ' + sQuery);
+  console.log('DBAPI | Info | GET | TARE_DATA | SQL Query| ' + JSON.stringify(sQuery));
   dbConnection.connect(dapConnOptions, function (err) {
     dbConnection.exec(sQuery, function (err, result) {
       if (err) throw err;
@@ -2459,6 +2495,98 @@ app.get('/api/get/consolidatedInventory', async function (req, res) {
       }
 
       dbConnection.disconnect();
+    });
+  });
+});
+
+app.get('/api/get/consumptionAnalysis', async function (req, res) {
+  console.log('DBAPI | Info | GET | CONS_ANL | Get Consumption Analysis Handler');
+
+  //If the mandatory parameters are not available, thorw error
+  if (!req.query.plant || !req.query.operator || !req.query.orderNo || !req.query.component) {
+    var oError = new Error('Required query params missing');
+    oError.status = 400;
+    throw oError;
+  }
+
+  //Create db connection
+  const dbConnection = hana.createConnection();
+
+  dbConnection.connect(dapConnOptions, function (oError) {
+    if (oError) {
+      console.error('DB connection failed', JSON.stringify(oError));
+      return res.status(500).send('Database connection error');
+    }
+
+    var sPlant = req.query.plant,
+      // sResource = req.query.resource,
+      sOperator = req.query.operator,
+      sOrderNo = req.query.orderNo,
+      sComponent = req.query.component,
+      iConsecutiveThreshold = 1,
+      iCumulativeThreshold = 1,
+      iCumulativeCount = 1;
+
+    //Query to fetch user personalized tolerances
+    var sQuery = `
+      SELECT *
+      FROM z_personalized_tolerances
+      WHERE plant = '${sPlant}'
+        and "ORDER" = '${sOrderNo}'
+        and component = '${sComponent}'
+        and operator = '${sOperator}'
+        and active = 1
+      ORDER BY created_timestamp DESC
+      LIMIT 1
+    `;
+
+    console.log('DBAPI | Info | GET | CONS_ANL | Retrieve personalized tolerance', JSON.stringify(sQuery));
+    dbConnection.exec(sQuery, function (oError, aResult) {
+      console.log('DBAPI | Info | GET | CONS_ANL | Results', JSON.stringify(aResult));
+      if (oError) {
+        console.log('DBAPI | Error | GET | CONS_ANL | Error retrieving personalized tolerance data', JSON.stringify(oError));
+        res.status(500).send('Error executing query');
+        return;
+      }
+
+      //Expecting one row from the table corresponding to the provided filters
+      if (aResult && aResult.length !== 1) {
+        console.log('DBAPI | Error | GET | CONS_ANL | No consumption found for given parameters', JSON.stringify(oError));
+        res.status(404).send('No consumption found for given parameters');
+        return;
+      }
+
+      iConsecutiveThreshold = aResult[0].CONSECUTIVE_THRESHOLD_COUNT;
+      iCumulativeCount = aResult[0].CUMULATIVE_THRESHOLD_COUNT;
+      iCumulativeThreshold = aResult[0].CUMULATIVE_CONSUMPTION_LIMIT;
+
+      console.log(
+        `DBAPI | Info | GET | CONS_ANL | ConsCount=${iConsecutiveThreshold}, CumulCount=${iCumulativeCount}, CumulThreshold=${iCumulativeThreshold}`
+      );
+
+      var sQuery = `
+        SELECT *
+        FROM ZTF_FAIL_ANALYSIS_COMBINED(
+          ${iConsecutiveThreshold},
+          ${iCumulativeThreshold},
+          ${iCumulativeCount},
+          '${sPlant}',
+          '${sOperator}',
+          '${sOrderNo}',
+          '${sComponent}'
+        )
+      `;
+
+      console.log('DBAPI | Info | GET | CONS_ANL | Run the table function to capture data', JSON.stringify(sQuery));
+      dbConnection.exec(sQuery, function (oError, aResult) {
+        if (oError || (aResult && aResult.length !== 1)) {
+          console.log('DBAPI | Error | GET | CONS_ANL | Error occured running ZTF_FAIL_ANALYSIS_COMBINED', JSON.stringify(oError));
+          res.status(500).send('Error executing query');
+          return;
+        }
+
+        res.send(aResult);
+      });
     });
   });
 });

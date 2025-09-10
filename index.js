@@ -618,28 +618,20 @@ app.post('/api/get/bomTolerances', async function (req, res) {
       var active = 1;
       console.log('portioning=' + portioning);
       if (portioning == 'true') {
-        var queryString =
-          "select * from Z_PERSONALIZED_TOLERANCES where PLANT='" +
-          plant +
-          "' and ERP_BOM='" +
-          erpBom +
-          "' and OPERATOR='" +
-          operator +
-          "' and WORKCENTER='" +
-          workcenter +
-          "' and COMPONENT='" +
-          component +
-          "'and COMPONENT_VERSION='" +
-          componentVersion +
-          "'and BOM='" +
-          bom +
-          "'and BOM_VERSION='" +
-          bomVersion +
-          '\'and "ORDER"=\'' +
-          order +
-          "'and ACTIVE='" +
-          active +
-          "'";
+        var queryString = `
+          select *
+          from Z_PERSONALIZED_TOLERANCES
+          where PLANT = '${plant}'
+            and "ORDER" = '${order}'
+            and COMPONENT = '${component}'
+            and OPERATOR = '${operator}'
+            and BOM = '${bom}'
+            and BOM_VERSION = '${bomVersion}'
+            and ACTIVE = '${active}'
+            and ERP_BOM = '${erpBom}'
+            and WORKCENTER = '${workcenter}'
+            and COMPONENT_VERSION = '${componentVersion}'
+        `;
         console.log('/api/get/bomTolerances from personalized table SQL :' + queryString);
         dbConnection.exec(queryString, function (err, result) {
           if (err) throw err;
@@ -703,6 +695,55 @@ app.post('/api/get/consumptionData', async function (req, res) {
       });
     });
   } else res.send("Request Body can't be empty");
+});
+
+app.get('/api/v2/get/consumptionData', async function (req, res) {
+  console.log('Inside /api/v2/get/consumptionData GET Method');
+
+  let sPlant = req.query.plant,
+    sWorkcenter = req.query.workcenter,
+    sOperator = req.query.operator,
+    sOrderNo = req.query.orderNo,
+    sResource = req.query.resource,
+    sMaterial = req.query.material,
+    sConsumptionStart = req.query.startDate,
+    sConsumptionEnd = req.query.endDate;
+
+  // console.log('DBAPI | Info | GET | HIST_DATA | Query Params | ' + JSON.stringify(req));
+
+  if (!sPlant) {
+    var oError = new Error('Mandatory parameters missing');
+    oError.status = 400;
+    throw oError;
+  }
+
+  let sQuery = `select  TO_DECIMAL(UPPER_TOLERANCE/1000,10,4) AS UPPER_TOL_IN_KG,
+                  TO_DECIMAL(LOWER_TOLERANCE/1000,10,4) AS LOWER_TOL_IN_KG,
+                  TO_DECIMAL(QUANTITY/1000,10,4) AS QTY_IN_KG,
+                  TO_DECIMAL(TARGET/1000,10,4) AS TARGET_IN_KG,
+                  *
+                from Z_CONSUMPTION 
+                where PLANT='${sPlant}'
+                  ${sWorkcenter ? "and WORKCENTER ='" + sWorkcenter + "'" : ''}
+                  ${sOperator ? "and OPERATOR ='" + sOperator + "'" : ''}
+                  ${sOrderNo ? "and ORDER_NO ='" + sOrderNo + "'" : ''}
+                  ${sResource ? "and RESOURCE ='" + sResource + "'" : ''}
+                  ${sMaterial ? "and HEADER_MATERIAL ='" + sMaterial + "'" : ''}
+                  ${sConsumptionStart ? "and CONSUMPTION_DATE >'" + sConsumptionStart + "'" : ''}
+                  ${sConsumptionEnd ? "and CONSUMPTION_DATE ='" + sConsumptionEnd + "'" : ''}
+                order by CONSUMPTION_DATE DESC`;
+
+  console.log('DBAPI | Info | GET | HIST_DATA | SQL Query| ' + JSON.stringify(sQuery));
+
+  let dbConnection = hana.createConnection();
+  dbConnection.connect(dapConnOptions, function (err) {
+    dbConnection.exec(sQuery, function (err, result) {
+      if (err) throw err;
+      console.log('DBAPI | Info | GET | HIST_DATA | Result | ' + JSON.stringify(result));
+      res.send(result);
+      dbConnection.disconnect();
+    });
+  });
 });
 
 app.post('/api/userCal/claculateTolerance', async function (req, res) {
@@ -947,28 +988,22 @@ app.post('/api/insert/initial/personalizedTolerances', async function (req, res)
       var erpSequence = req.body.erpSequence;
       var active = 1;
       console.log('type=' + typeof active);
-      var queryString =
-        "select * from Z_PERSONALIZED_TOLERANCES where PLANT='" +
-        plant +
-        "' and ERP_BOM='" +
-        erpBOM +
-        "'  and OPERATOR='" +
-        operator +
-        "' and WORKCENTER='" +
-        workcenter +
-        "' and COMPONENT='" +
-        component +
-        "'and COMPONENT_VERSION='" +
-        componentVersion +
-        "'and BOM='" +
-        bom +
-        "'and BOM_VERSION='" +
-        bomVersion +
-        '\'and "ORDER"=\'' +
-        order +
-        "'and ACTIVE='" +
-        active +
-        "'";
+
+      const queryString = `
+        SELECT *
+        FROM Z_PERSONALIZED_TOLERANCES
+        WHERE PLANT = '${plant}'
+          AND "ORDER" = '${order}'
+          AND COMPONENT = '${component}'
+          AND OPERATOR = '${operator}'
+          AND BOM = '${bom}'
+          AND BOM_VERSION = '${bomVersion}'
+          AND ACTIVE = '${active}'
+          AND ERP_BOM = '${erpBOM}'
+          AND WORKCENTER = '${workcenter}'
+          AND COMPONENT_VERSION = '${componentVersion}'
+      `;
+
       console.log('/api/insert/initial/personalizedTolerances SQL :' + queryString);
       dbConnection.exec(queryString, function (err, result) {
         if (err) throw err;
@@ -1111,28 +1146,22 @@ app.post('/api/get/personalizedTolerances', async function (req, res) {
       var componentVersion = req.body.COMPONENT_VERSION;
       var active = 1;
       // var queryString="select * from Z_PERSONALIZED_TOLERANCES where BOM='" + bom + "' and BOM_VERSION='"+bomVersion+"' and COMPONENT='"+component+"' and COMPONENT_VERSION='"+componentVersion+"'";
-      var queryString =
-        "select * from Z_PERSONALIZED_TOLERANCES where PLANT='" +
-        plant +
-        "' and ERP_BOM='" +
-        erpBOM +
-        "' and ERP_SEQUENCE='" +
-        erpSequence +
-        '\' and "ORDER"=\'' +
-        order +
-        "' and OPERATOR='" +
-        operator +
-        "' and BOM='" +
-        bom +
-        "' and BOM_VERSION='" +
-        bomVersion +
-        "' and COMPONENT='" +
-        component +
-        "' and COMPONENT_VERSION='" +
-        componentVersion +
-        "'and ACTIVE='" +
-        active +
-        "'";
+
+      const queryString = `
+        SELECT *
+        FROM Z_PERSONALIZED_TOLERANCES
+        WHERE PLANT = '${plant}'
+          AND "ORDER" = '${order}'
+          AND COMPONENT = '${component}'
+          AND OPERATOR = '${operator}'
+          AND BOM = '${bom}'
+          AND BOM_VERSION = '${bomVersion}'
+          AND ACTIVE = '${active}'
+          AND ERP_BOM = '${erpBOM}'
+          AND ERP_SEQUENCE = '${erpSequence}'
+          AND COMPONENT_VERSION = '${componentVersion}'
+      `;
+
       console.log('/api/get/personalizedTolerances SQL :' + queryString);
       dbConnection.exec(queryString, function (err, result) {
         if (err) throw err;
@@ -1230,11 +1259,11 @@ app.get('/api/get/tareData', async function (req, res, next) {
   console.log('DBAPI | Info | GET | TARE_DATA | Get Tare Information Handler');
 
   //If the mandatory parameters are not available, thorw error
-  if (!req.query.plant || !req.query.resource || !req.query.operator || !req.query.orderNo || !req.query.component) {
-    var oError = new Error('Required query params missing');
-    oError.status = 400;
-    throw oError;
-  }
+  // if (!req.query.plant || !req.query.resource || !req.query.operator || !req.query.orderNo || !req.query.component) {
+  //   var oError = new Error('Required query params missing');
+  //   oError.status = 400;
+  //   throw oError;
+  // }
 
   var sPlant = req.query.plant,
     sResource = req.query.resource,
@@ -1667,6 +1696,7 @@ app.post('/api/insertOrUpdate/assignenmentDetails', async function (req, res) {
       var correctionTime = req.body.correctionTime;
       var resource = req.body.resource;
       var active = req.body.active;
+      var batchNo = req.body.batchNo || '';
 
       var queryString =
         "select * from Z_ASSIGNMENT where SEAT_NUMBER='" +
@@ -1687,30 +1717,8 @@ app.post('/api/insertOrUpdate/assignenmentDetails', async function (req, res) {
         if (err) throw err;
         console.log(result);
         if (result.length == 0) {
-          var queryString =
-            "insert into Z_ASSIGNMENT (PLANT,SEAT_NUMBER,COMPONENT_SEQUENCE,OPERATOR,WORK_CENTER,COMPONENT,MATERIAL,RESOURCE,ACCEPTANCE_DELAY,CORRECTION_TIME,ACTIVE,UPDATED_DATE_TIME) values('" +
-            plant +
-            "','" +
-            seatNumber +
-            "','" +
-            componentSequence +
-            "','" +
-            operator +
-            "','" +
-            workcenter +
-            "','" +
-            component +
-            "','" +
-            material +
-            "','" +
-            resource +
-            "','" +
-            acceptanceDelay +
-            "','" +
-            correctionTime +
-            "','" +
-            active +
-            "',ADD_SECONDS(CURRENT_UTCTIMESTAMP, 3 * 3600))";
+          var queryString = `insert into z_assignment values('${plant}', '${seatNumber}', '${componentSequence}', '${operator}', '${workcenter}', '${component}', '${material}', '${resource}', '${acceptanceDelay}', '${correctionTime}', ADD_SECONDS(CURRENT_UTCTIMESTAMP, 3*36000), '${active}', '${batchNo}')`;
+
           console.log('/api/insertOrUpdate/assignenmentDetails SQL :' + queryString);
           dbConnection.exec(queryString, function (err, result) {
             if (err) throw err;
@@ -1719,31 +1727,47 @@ app.post('/api/insertOrUpdate/assignenmentDetails', async function (req, res) {
             dbConnection.disconnect();
           });
         } else {
-          var queryString =
-            "update  Z_ASSIGNMENT SET OPERATOR='" +
-            operator +
-            "',RESOURCE='" +
-            resource +
-            "' ,ACCEPTANCE_DELAY='" +
-            acceptanceDelay +
-            "',CORRECTION_TIME='" +
-            correctionTime +
-            "',ACTIVE='" +
-            active +
-            "', UPDATED_DATE_TIME=ADD_SECONDS(CURRENT_UTCTIMESTAMP, 3 * 3600) WHERE SEAT_NUMBER='" +
-            seatNumber +
-            "' and COMPONENT_SEQUENCE='" +
-            componentSequence +
-            "' and WORK_CENTER='" +
-            workcenter +
-            "' and COMPONENT='" +
-            component +
-            "' and MATERIAL='" +
-            material +
-            "' and PLANT='" +
-            plant +
-            "'";
-          console.log('/api/insertOrUpdate/assignenmentDetails SQL :' + queryString);
+          // var queryString =
+          //   "update  Z_ASSIGNMENT SET OPERATOR='" +
+          //   operator +
+          //   "',RESOURCE='" +
+          //   resource +
+          //   "' ,ACCEPTANCE_DELAY='" +
+          //   acceptanceDelay +
+          //   "',CORRECTION_TIME='" +
+          //   correctionTime +
+          //   "',ACTIVE='" +
+          //   active +
+          //   "', UPDATED_DATE_TIME=ADD_SECONDS(CURRENT_UTCTIMESTAMP, 3 * 3600) WHERE SEAT_NUMBER='" +
+          //   seatNumber +
+          //   "' and COMPONENT_SEQUENCE='" +
+          //   componentSequence +
+          //   "' and WORK_CENTER='" +
+          //   workcenter +
+          //   "' and COMPONENT='" +
+          //   component +
+          //   "' and MATERIAL='" +
+          //   material +
+          //   "' and PLANT='" +
+          //   plant +
+          //   "'";
+          var queryString = `
+            update z_assignment
+              set operator = '${operator}',
+                resource = '${resource}',
+                acceptance_delay = '${acceptanceDelay}',
+                correction_time = '${correctionTime}',
+                active = '${active}',
+                updated_date_time = add_seconds(current_utctimestamp, 3*3600),
+                batch_no ='${batchNo}'
+              where seat_number = '${seatNumber}'
+                and component_sequence = '${componentSequence}'
+                and work_center = '${workcenter}'
+                and component = '${component}'
+                and material = '${material}'
+                and plant = '${plant}'`;
+
+          console.log('/api/insertOrUpdate/assignenmentDetails SQL :' + JSON.stringify(queryString));
           dbConnection.exec(queryString, function (err, result) {
             if (err) throw err;
             console.log(' Assignment Details  Updated successfully');
@@ -1780,20 +1804,29 @@ app.post('/api/massUpdate/assignenmentDetails', async function (req, res) {
     // Prepare and execute queries
     const queries = req.body.map(async (item) => {
       // Check if the row exists
-      const checkQuery =
-        "select * from Z_ASSIGNMENT where SEAT_NUMBER='" +
-        item.seatNumber +
-        "' and COMPONENT_SEQUENCE='" +
-        item.componentSequence +
-        "' and WORK_CENTER='" +
-        item.workcenter +
-        "' and COMPONENT='" +
-        item.component +
-        "' and MATERIAL='" +
-        item.material +
-        "' and PLANT='" +
-        item.plant +
-        "'";
+      // const checkQuery =
+      //   "select * from Z_ASSIGNMENT where SEAT_NUMBER='" +
+      //   item.seatNumber +
+      //   "' and COMPONENT_SEQUENCE='" +
+      //   item.componentSequence +
+      //   "' and WORK_CENTER='" +
+      //   item.workcenter +
+      //   "' and COMPONENT='" +
+      //   item.component +
+      //   "' and MATERIAL='" +
+      //   item.material +
+      //   "' and PLANT='" +
+      //   item.plant +
+      //   "'";
+      const checkQuery = `select *
+                          from z_assignment
+                          where seat_number = '${item.seatNumber}'
+                            and component_sequence = '${item.componentSequence}'
+                            and work_center = '${item.workcenter}'
+                            and component = '${item.component}'
+                            and material = '${item.material}'
+                            and plant = '${item.plant}'
+                            ${item.batch ? `and batch_no = '${item.batch}'` : ''}`;
       console.log('CheckQuery: ' + checkQuery);
 
       const rows = await new Promise((resolve, reject) => {
@@ -1807,31 +1840,22 @@ app.post('/api/massUpdate/assignenmentDetails', async function (req, res) {
 
       // If rows exist, delete them
       if (rows.length > 0) {
-        const updateQuery =
-          "update  Z_ASSIGNMENT SET OPERATOR='" +
-          item.operator +
-          "',RESOURCE='" +
-          item.resource +
-          "' ,ACCEPTANCE_DELAY='" +
-          item.acceptanceDelay +
-          "',CORRECTION_TIME='" +
-          item.correctionTime +
-          "',ACTIVE='" +
-          item.active +
-          "', UPDATED_DATE_TIME=ADD_SECONDS(CURRENT_UTCTIMESTAMP, 3 * 3600) WHERE SEAT_NUMBER='" +
-          item.seatNumber +
-          "' and COMPONENT_SEQUENCE='" +
-          item.componentSequence +
-          "'and WORK_CENTER='" +
-          item.workcenter +
-          "' and COMPONENT='" +
-          item.component +
-          "' and MATERIAL='" +
-          item.material +
-          "' and PLANT='" +
-          item.plant +
-          "'";
-        console.log('updateQuery: ' + updateQuery);
+        const updateQuery = `update z_assignment
+          set operator = '${item.operator}',
+            resource = '${item.resource}',
+            acceptance_delay = '${item.acceptanceDelay}',
+            correction_time = '${item.correctionTime}',
+            active = '${item.active}',
+            updated_date_time = add_seconds(current_utctimestamp, 3 *3600),
+            batch_no = '${item.batch}'
+          where 
+            seat_number = '${item.seatNumber}'
+            and component_sequence = '${item.componentSequence}'
+            and work_center = '${item.workcenter}'
+            and component = '${item.component}'
+            and material = '${item.material}'
+            and plant = '${item.plant}'`;
+        console.log('updateQuery: ' + JSON.stringify(updateQuery));
 
         await new Promise((resolve, reject) => {
           dbConnection.exec(updateQuery, (err, result) => {
@@ -1842,31 +1866,12 @@ app.post('/api/massUpdate/assignenmentDetails', async function (req, res) {
         });
       } else {
         // Insert new row
-        const insertQuery =
-          "insert into Z_ASSIGNMENT (PLANT,SEAT_NUMBER,COMPONENT_SEQUENCE,OPERATOR,WORK_CENTER,COMPONENT,MATERIAL,RESOURCE,ACCEPTANCE_DELAY,CORRECTION_TIME,ACTIVE,UPDATED_DATE_TIME) values('" +
-          item.plant +
-          "','" +
-          item.seatNumber +
-          "','" +
-          item.componentSequence +
-          "','" +
-          item.operator +
-          "','" +
-          item.workcenter +
-          "','" +
-          item.component +
-          "','" +
-          item.material +
-          "','" +
-          item.resource +
-          "','" +
-          item.acceptanceDelay +
-          "','" +
-          item.correctionTime +
-          "','" +
-          item.active +
-          "',ADD_SECONDS(CURRENT_UTCTIMESTAMP, 3 * 3600))";
-        console.log('InsertQuery: ' + insertQuery);
+        const insertQuery = `insert into z_assignment (PLANT,SEAT_NUMBER,COMPONENT_SEQUENCE,OPERATOR,WORK_CENTER,COMPONENT,MATERIAL,RESOURCE,ACCEPTANCE_DELAY,CORRECTION_TIME,ACTIVE,UPDATED_DATE_TIME,BATCH_NO)
+          values('${item.plant}', '${item.seatNumber}', '${item.componentSequence}', '${item.operator}','${item.workcenter}',
+          '${item.component}','${item.material}','${item.resource}','${item.acceptanceDelay}',
+          '${item.correctionTime}','${item.active}', add_seconds(current_utctimestamp, 3 * 3600), '${item.batch}')`;
+
+        console.log('InsertQuery: ' + JSON.stringify(insertQuery));
 
         await new Promise((resolve, reject) => {
           dbConnection.exec(insertQuery, (err, result) => {
@@ -1908,7 +1913,7 @@ app.post('/api/get/assignmentDetails', async function (req, res) {
       console.log('/api/get/assignmentDetails SQL :' + queryString);
       dbConnection.exec(queryString, function (err, result) {
         if (err) throw err;
-        console.log(result);
+        console.log(JSON.stringify(result));
         console.log('Assignment Details Details Fetched successfully');
         res.send(result);
         dbConnection.disconnect();
@@ -2324,17 +2329,18 @@ app.get('/api/get/consolidatedQuantity', async function (req, res) {
     erpSequence = parseInt(erpSequence, 10);
 
     var queryString = `
-            SELECT SUM(QUANTITY)/1000 AS TOTAL_QUANTITY
-            FROM Z_CONSUMPTION 
-            WHERE PLANT = '${plant}' 
-                AND HEADER_MATERIAL = '${material}' 
-                AND "ORDER_NO" = '${order}' 
-                AND "OPERATION" = '${phase}' 
-                AND "WORKCENTER" = '${workcenter}' 
-                AND COMPONENT = '${component}' 
-                AND LOCAL_SEQUENCE = '${localSequence}'
-            AND COUNTED_FOR_CONSOLIDATED_POSTING = 0;
-        `;
+      SELECT SUM(QUANTITY)/1000 AS TOTAL_QUANTITY,
+        BATCH_NUMBER
+      FROM Z_CONSUMPTION 
+      WHERE PLANT = '${plant}' 
+        AND HEADER_MATERIAL = '${material}' 
+        AND "ORDER_NO" = '${order}' 
+        AND "OPERATION" = '${phase}' 
+        AND "WORKCENTER" = '${workcenter}' 
+        AND COMPONENT = '${component}' 
+        AND LOCAL_SEQUENCE = '${localSequence}'
+        AND COUNTED_FOR_CONSOLIDATED_POSTING = 0
+      GROUP BY BATCH_NUMBER;`;
 
     console.log('/api/get/consolidatedQuantity SQL:', queryString);
 
@@ -2343,13 +2349,16 @@ app.get('/api/get/consolidatedQuantity', async function (req, res) {
         console.error('Query execution failed:', err);
         res.status(500).send('Error executing query');
       } else {
-        console.log('Consolidated consumption quantity fetched successfully', result);
-        var totalQuantity = result.length > 0 && result[0].TOTAL_QUANTITY !== null ? result[0].TOTAL_QUANTITY : 0;
-        totalQuantity = Number(totalQuantity);
-        totalQuantity = totalQuantity.toFixed(3);
-        totalQuantity = Number(totalQuantity);
-        res.json({ value: totalQuantity });
+        console.log('Consolidated consumption quantity fetched successfully', JSON.stringify(result));
+        // var totalQuantity = result.length > 0 && result[0].TOTAL_QUANTITY !== null ? result[0].TOTAL_QUANTITY : 0;
+        // totalQuantity = Number(totalQuantity);
+        // totalQuantity = totalQuantity.toFixed(3);
+        // totalQuantity = Number(totalQuantity);
+        // res.json({ value: totalQuantity });
         // res.send(result);
+
+        var aResult = result.map((oItem) => ({ value: parseFloat(oItem.TOTAL_QUANTITY).toFixed(3), batchNo: oItem.BATCH_NUMBER }));
+        res.send(aResult.length > 0 ? aResult[0] : ({value: 0, batchNo: 0}));
       }
 
       dbConnection.disconnect();
@@ -2374,18 +2383,25 @@ app.post('/api/update/ConsolidatedPostingData', async function (req, res) {
       var component = req.body.component;
       var erpSequence = req.body.erpSequence;
       var localSequence = req.body.localSequence;
+      var batchNo = req.body.batchNo;
+
+      if(!batchNo){
+        res.status(400).send('Request does not contain batch information');
+        return;
+      }
+
       var queryString = `
-                UPDATE Z_CONSUMPTION 
-                SET COUNTED_FOR_CONSOLIDATED_POSTING = 1 
-                WHERE PLANT = '${plant}' 
-                AND HEADER_MATERIAL = '${material}' 
-                AND "ORDER_NO" = '${order}' 
-                AND "OPERATION" = '${phase}' 
-                AND "WORKCENTER" = '${workcenter}' 
-                AND COMPONENT = '${component}' 
-                AND LOCAL_SEQUENCE = '${localSequence}'
-                AND COUNTED_FOR_CONSOLIDATED_POSTING = 0;
-            `;
+        UPDATE Z_CONSUMPTION 
+        SET COUNTED_FOR_CONSOLIDATED_POSTING = 1 
+        WHERE PLANT = '${plant}' 
+          AND HEADER_MATERIAL = '${material}' 
+          AND "ORDER_NO" = '${order}' 
+          AND "OPERATION" = '${phase}' 
+          AND "WORKCENTER" = '${workcenter}' 
+          AND COMPONENT = '${component}' 
+          AND LOCAL_SEQUENCE = '${localSequence}'
+          AND COUNTED_FOR_CONSOLIDATED_POSTING = 0
+          AND BATCH_NUMBER = '${batchNo}'`;
 
       console.log('/api/update/ConsolidatedPostingData SQL :' + queryString);
       dbConnection.exec(queryString, function (err, result) {
@@ -2502,12 +2518,12 @@ app.get('/api/get/consolidatedInventory', async function (req, res) {
 app.get('/api/get/consumptionAnalysis', async function (req, res) {
   console.log('DBAPI | Info | GET | CONS_ANL | Get Consumption Analysis Handler');
 
-  //If the mandatory parameters are not available, thorw error
-  if (!req.query.plant || !req.query.operator || !req.query.orderNo || !req.query.component) {
-    var oError = new Error('Required query params missing');
-    oError.status = 400;
-    throw oError;
-  }
+  // //If the mandatory parameters are not available, thorw error
+  // if (!req.query.plant || !req.query.operator || !req.query.orderNo || !req.query.component) {
+  //   var oError = new Error('Required query params missing');
+  //   oError.status = 400;
+  //   throw oError;
+  // }
 
   //Create db connection
   const dbConnection = hana.createConnection();

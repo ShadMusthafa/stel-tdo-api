@@ -681,11 +681,22 @@ app.post('/api/get/consumptionData', async function (req, res) {
       if (err) throw err;
       console.log('Connected');
       var plant = req.body.plant;
-      var queryString =
-        "select TO_DECIMAL(UPPER_TOLERANCE/1000,10,4) AS UPPER_TOL_IN_KG,TO_DECIMAL(LOWER_TOLERANCE/1000,10,4) AS LOWER_TOL_IN_KG,TO_DECIMAL(QUANTITY/1000,10,4) AS QTY_IN_KG ,TO_DECIMAL(TARGET/1000,10,4) AS TARGET_IN_KG ,* from Z_CONSUMPTION where PLANT='" +
-        plant +
-        "' ORDER BY CONSUMPTION_DATE DESC";
-      console.log('/api/get/consumptionData SQL :' + queryString);
+      // var queryString =
+      //   "select TO_DECIMAL(UPPER_TOLERANCE/1000,10,4) AS UPPER_TOL_IN_KG,TO_DECIMAL(LOWER_TOLERANCE/1000,10,4) AS LOWER_TOL_IN_KG,TO_DECIMAL(QUANTITY/1000,10,4) AS QTY_IN_KG ,TO_DECIMAL(TARGET/1000,10,4) AS TARGET_IN_KG ,* from Z_CONSUMPTION where PLANT='" +
+      //   plant +
+      //   "' ORDER BY CONSUMPTION_DATE DESC";
+
+      var queryString = `
+        SELECT TO_DECIMAL(UPPER_TOLERANCE/1000,10,4) AS UPPER_TOL_IN_KG,
+          TO_DECIMAL(LOWER_TOLERANCE/1000,10,4) AS LOWER_TOL_IN_KG,
+          TO_DECIMAL(QUANTITY/1000,10,4) AS QTY_IN_KG,
+          TO_DECIMAL(TARGET/1000,10,4) AS TARGET_IN_KG,
+          *
+        FROM Z_CONSUMPTION
+        WHERE plant = ${plant}
+        ORDER BY consumption_date desc `;
+
+      console.log('/api/get/consumptionData SQL :' + JSON.stringify(queryString));
       dbConnection.exec(queryString, function (err, result) {
         if (err) throw err;
         console.log(result);
@@ -766,30 +777,11 @@ app.post('/api/userCal/claculateTolerance', async function (req, res) {
       var component = req.body.COMPONENT;
       var componentVersion = req.body.COMPONENT_VERSION;
       var portioning = 1;
-      var queryString =
-        "CALL TARGET_DYNAMIC_OPTIMIZATION_PROC_V2('" +
-        plant +
-        "','" +
-        orderNo +
-        "','" +
-        material +
-        "','" +
-        operator +
-        "','" +
-        bom +
-        "','" +
-        erpBOM +
-        // "','" +
-        // erpSequence +
-        "','" +
-        bomVersion +
-        "','" +
-        component +
-        "','" +
-        componentVersion +
-        "','" +
-        portioning +
-        "',OUTPUT_TABLE => ?);";
+      var sfc = req.body.sfc;
+
+      // var queryString = `CALL TARGET_DYNAMIC_OPTIMIZATION_PROC_V2('${plant}','${orderNo}','${material}','${operator}','${bom}','${erpBOM}','${bomVersion}','${component}','${componentVersion}','${portioning}', OUTPUT_TABLE => ?) `;
+      var queryString = `CALL TARGET_DYNAMIC_OPTIMIZATION_PROC_V3('${plant}','${orderNo}','${material}','${operator}','${bom}','${erpBOM}','${bomVersion}','${component}','${componentVersion}','${portioning}','${sfc}', OUTPUT_TABLE => ?) `;
+
       console.log('/api/userCal/claculateTolerance SQL :' + queryString);
       dbConnection.exec(queryString, function (err, result) {
         if (err) throw err;
@@ -836,6 +828,8 @@ app.post('/api/insert/consumptionData', async function (req, res) {
       var componentDescription = req.body.componentDescription;
       var orderStatus = req.body.orderStatus;
       var storageLocation = req.body.storageLocation;
+      var sfc = req.body.sfc;
+
       //erpSequence=Number(erpSequence);
       console.log('loacalSequence= ' + localSequence);
       localSequence = Number(localSequence);
@@ -858,6 +852,7 @@ app.post('/api/insert/consumptionData', async function (req, res) {
                         and WORKCENTER = '${workcenter}'
                         and COMPONENT = '${component}'
                         and RESOURCE = '${resource}'
+                        and SFC = '${sfc}'
                     order by CONSUMPTION_DATE DESC
                     limit 1`;
         dbConnection.exec(queryString, function (err, result) {
@@ -885,7 +880,7 @@ app.post('/api/insert/consumptionData', async function (req, res) {
           console.log('SMDEV Tare WT ->', tareActualWeight);
 
           var queryString =
-            "insert into Z_CONSUMPTION (PLANT,ORDER_NO,OPERATOR,BOM,BOM_VERSION,COMPONENT,COMPONENT_VERSION,RESOURCE,WORKCENTER,TARGET,LOWER_TOLERANCE,UPPER_TOLERANCE,QUANTITY,PORTIONING,ERP_BOM,WORKCENTER_DESCRIPTION,HEADER_MATERIAL,HEADER_MATERIAL_DESCRIPTION,COMPONENT_DESCRIPTION,ORDER_STATUS,UNIT_OF_MEASURE,BATCH_NUMBER,OPERATION,LOCAL_SEQUENCE,STORAGE_LOCATION,CURRENT_GROSS_WEIGHT,TARE_ACTUAL_WEIGHT) values('" +
+            "insert into Z_CONSUMPTION (PLANT,ORDER_NO,OPERATOR,BOM,BOM_VERSION,COMPONENT,COMPONENT_VERSION,RESOURCE,WORKCENTER,TARGET,LOWER_TOLERANCE,UPPER_TOLERANCE,QUANTITY,PORTIONING,ERP_BOM,WORKCENTER_DESCRIPTION,HEADER_MATERIAL,HEADER_MATERIAL_DESCRIPTION,COMPONENT_DESCRIPTION,ORDER_STATUS,UNIT_OF_MEASURE,BATCH_NUMBER,OPERATION,LOCAL_SEQUENCE,STORAGE_LOCATION,CURRENT_GROSS_WEIGHT,TARE_ACTUAL_WEIGHT,SFC) values('" +
             plant +
             "','" +
             order +
@@ -939,6 +934,8 @@ app.post('/api/insert/consumptionData', async function (req, res) {
             currentGrossWeight +
             "','" +
             tareActualWeight +
+            "','" +
+            sfc +
             "')";
 
           console.log('/api/insert/consumptionData SQL :' + queryString);
@@ -986,6 +983,7 @@ app.post('/api/insert/initial/personalizedTolerances', async function (req, res)
       var resource = req.body.resource;
       var erpBOM = req.body.erpBOM;
       var erpSequence = req.body.erpSequence;
+      var sfc = req.body.sfc;
       var active = 1;
       console.log('type=' + typeof active);
 
@@ -1001,6 +999,7 @@ app.post('/api/insert/initial/personalizedTolerances', async function (req, res)
           AND ACTIVE = '${active}'
           AND ERP_BOM = '${erpBOM}'
           AND WORKCENTER = '${workcenter}'
+          and SFC = '${sfc}'
           AND COMPONENT_VERSION = '${componentVersion}'
       `;
 
@@ -1014,7 +1013,7 @@ app.post('/api/insert/initial/personalizedTolerances', async function (req, res)
           console.log('/api/insert/initial/personalizedTolerances SQL :' + queryString);
           dbConnection.exec(queryString, function (err, result) {
             if (err) throw err;
-            console.log(result);
+            console.log('BOM query result', JSON.stringify(result));
             if (result.length != 0) {
               var upperTolerance = result[0].UPPER_TOLERANCE;
               var lowerTolerance = result[0].LOWER_TOLERANCE;
@@ -1023,10 +1022,11 @@ app.post('/api/insert/initial/personalizedTolerances', async function (req, res)
               var meanGaurdPlus = result[0].MEAN_GAURD_PLUS;
               var meanGaurdMinus = result[0].MEAN_GAURD_MINUS;
               var cycleCountForTDO = result[0].CYCLE_COUNT_FOR_TDO;
+              // var sfc = result[0].SFC;
               var active = 1;
 
               var queryString =
-                'insert into Z_PERSONALIZED_TOLERANCES (PLANT,"ORDER",MATERIAL,OPERATOR,WORKCENTER,ERP_BOM,BOM,BOM_VERSION,COMPONENT,COMPONENT_VERSION,TARGET,LOWER_TOLERANCE,UPPER_TOLERANCE,SCALE_FACTOR,MEAN_GAURD_PLUS,MEAN_GAURD_MINUS,ACTIVE,COUNT_FOR_TDO,RESOURCE) values(\'' +
+                'insert into Z_PERSONALIZED_TOLERANCES (PLANT,"ORDER",MATERIAL,OPERATOR,WORKCENTER,ERP_BOM,BOM,BOM_VERSION,COMPONENT,COMPONENT_VERSION,TARGET,LOWER_TOLERANCE,UPPER_TOLERANCE,SCALE_FACTOR,MEAN_GAURD_PLUS,MEAN_GAURD_MINUS,ACTIVE,COUNT_FOR_TDO,RESOURCE,SFC) values(\'' +
                 plant +
                 "','" +
                 order +
@@ -1064,8 +1064,10 @@ app.post('/api/insert/initial/personalizedTolerances', async function (req, res)
                 cycleCountForTDO +
                 "','" +
                 resource +
+                "','" +
+                sfc +
                 "')";
-              console.log('/api/insert/initial/personalizedTolerances SQL :' + queryString);
+              console.log('/api/insert/initial/personalizedTolerances SQL :' + JSON.stringify(queryString));
               dbConnection.exec(queryString, function (err, result) {
                 if (err) throw err;
                 console.log(' Operator Personalized tolerancen Details Data inserted successfully');
@@ -1333,237 +1335,128 @@ app.post('/api/get/realTimeConsumptionData', async function (req, res) {
 });*/
 
 app.post('/api/insertAndUpdate/personalizedTolerances', async function (req, res) {
-  console.log('Inside /api/insertAndUpdate/personalizedTolerances POST method');
-  if (req.body != undefined) {
-    var dbConnection = hana.createConnection();
-    console.log('DB Connection Object : ' + dbConnection);
-    console.log('Request Body=' + req.body);
-    dbConnection.connect(dapConnOptions, function (err) {
-      if (err) throw err;
-      var workcenter = req.body.workCenter;
-      var operator = req.body.operator;
-      var component = req.body.component;
-      var componentVersion = req.body.componentVersion;
-      var bom = req.body.bom;
-      var bomVersion = req.body.bomVersion;
-      var order = req.body.order;
-      var material = req.body.material;
-      var plant = req.body.plant;
-      var erpBOM = req.body.erpBOM;
-      var erpSequence = req.body.erpSequence;
-      var upperTolerance = req.body.upperTolerance;
-      var lowerTolerance = req.body.lowerTolerance;
-      var meanGaurdPlus = req.body.meanGaurdPlus;
-      var meanGaurdMinus = req.body.meanGaurdMinus;
-      var consecutiveThreshold = req.body.consecutiveThreshold;
-      var cumulativeThreshold = req.body.cumulativeThreshold;
-      var cumulativeCunsumption = req.body.cumulativeCunsumption;
-      var tdoAdjustmentCycle = req.body.tdoAdjustmentCycle;
+  console.log('LOG | POST | InsertUpdatePersoTolerance');
 
-      var active = 1;
-      console.log('type=' + typeof active);
-      // var queryString = "select * from Z_PERSONALIZED_TOLERANCES where PLANT='" + plant + "' and MATERIAL='" + material + "' and ERP_BOM='" + erpBOM + "' and ERP_SEQUENCE='" + erpSequence + "' and OPERATOR='" + operator + "' and WORKCENTER='" + workcenter + "' and COMPONENT='" + component + "'and COMPONENT_VERSION='" + componentVersion + "'and BOM='" + bom + "'and BOM_VERSION='" + bomVersion + "'and \"ORDER\"='" + order + "'and ACTIVE='" + active + "'";
-      var queryString =
-        "select * from Z_PERSONALIZED_TOLERANCES where PLANT='" +
-        plant +
-        "' and MATERIAL='" +
-        material +
-        "' and ERP_BOM='" +
-        erpBOM +
-        "' and OPERATOR='" +
-        operator +
-        "' and WORKCENTER='" +
-        workcenter +
-        "' and COMPONENT='" +
-        component +
-        "'and COMPONENT_VERSION='" +
-        componentVersion +
-        "'and BOM='" +
-        bom +
-        "'and BOM_VERSION='" +
-        bomVersion +
-        '\'and "ORDER"=\'' +
-        order +
-        "'and ACTIVE='" +
-        active +
-        "'";
-      console.log('/api/insertAndUpdate/personalizedTolerances SQL :' + queryString);
-      dbConnection.exec(queryString, function (err, result) {
-        if (err) throw err;
-        console.log(result);
-        if (result.length > 0) {
-          var scaleFactor = result[0].SCALE_FACTOR;
-          var target = result[0].TARGET;
-          var resource = result[0].RESOURCE;
-          var previoushandle = result[0].HANDLE;
-          var cycleCountForTDO = result[0].COUNT_FOR_TDO;
-          // var queryString =
-          //   "UPDATE Z_PERSONALIZED_TOLERANCES SET ACTIVE=0 where PLANT='" +
-          //   plant +
-          //   "' and MATERIAL='" +
-          //   material +
-          //   "' and ERP_BOM='" +
-          //   erpBOM +
-          //   "' and ERP_SEQUENCE='" +
-          //   erpSequence +
-          //   "' and OPERATOR='" +
-          //   operator +
-          //   "' and WORKCENTER='" +
-          //   workcenter +
-          //   "' and COMPONENT='" +
-          //   component +
-          //   "'and COMPONENT_VERSION='" +
-          //   componentVersion +
-          //   "'and BOM='" +
-          //   bom +
-          //   "'and BOM_VERSION='" +
-          //   bomVersion +
-          //   '\'and "ORDER"=\'' +
-          //   order +
-          //   "'and ACTIVE='" +
-          //   active +
-          //   "'";
-          var queryString =
-            "UPDATE Z_PERSONALIZED_TOLERANCES SET ACTIVE=0 where PLANT='" +
-            plant +
-            "' and MATERIAL='" +
-            material +
-            "' and ERP_BOM='" +
-            erpBOM +
-            "' and OPERATOR='" +
-            operator +
-            "' and WORKCENTER='" +
-            workcenter +
-            "' and COMPONENT='" +
-            component +
-            "'and COMPONENT_VERSION='" +
-            componentVersion +
-            "'and BOM='" +
-            bom +
-            "'and BOM_VERSION='" +
-            bomVersion +
-            '\'and "ORDER"=\'' +
-            order +
-            "'and ACTIVE='" +
-            active +
-            "'";
-          console.log('/api/insertAndUpdate/personalizedTolerances SQL :' + queryString);
-          dbConnection.exec(queryString, function (err, result) {
-            if (err) throw err;
-            console.log(result);
-            // var queryString =
-            //   'insert into Z_PERSONALIZED_TOLERANCES (PLANT,"ORDER",MATERIAL,OPERATOR,WORKCENTER,ERP_BOM,ERP_SEQUENCE,BOM,BOM_VERSION,COMPONENT,COMPONENT_VERSION,TARGET,LOWER_TOLERANCE,UPPER_TOLERANCE,SCALE_FACTOR,MEAN_GAURD_PLUS,MEAN_GAURD_MINUS,ACTIVE,COUNT_FOR_TDO,RESOURCE,PREVIOUS_HANDLE,CONSECUTIVE_THRESHOLD_COUNT,CUMULATIVE_THRESHOLD_COUNT,CUMULATIVE_CONSUMPTION_LIMIT) values(\'' +
-            //   plant +
-            //   "','" +
-            //   order +
-            //   "','" +
-            //   material +
-            //   "','" +
-            //   operator +
-            //   "','" +
-            //   workcenter +
-            //   "','" +
-            //   erpBOM +
-            //   "','" +
-            //   erpSequence +
-            //   "','" +
-            //   bom +
-            //   "','" +
-            //   bomVersion +
-            //   "','" +
-            //   component +
-            //   "','" +
-            //   componentVersion +
-            //   "','" +
-            //   target +
-            //   "','" +
-            //   lowerTolerance * 1000 +
-            //   "','" +
-            //   upperTolerance * 1000 +
-            //   "','" +
-            //   scaleFactor +
-            //   "','" +
-            //   meanGaurdPlus +
-            //   "','" +
-            //   meanGaurdMinus +
-            //   "','" +
-            //   active +
-            //   "','" +
-            //   tdoAdjustmentCycle +
-            //   "','" +
-            //   resource +
-            //   "','" +
-            //   previoushandle +
-            //   "','" +
-            //   consecutiveThreshold +
-            //   "','" +
-            //   cumulativeThreshold +
-            //   "','" +
-            //   cumulativeCunsumption +
-            //   "')";
-            var queryString =
-              'insert into Z_PERSONALIZED_TOLERANCES (PLANT,"ORDER",MATERIAL,OPERATOR,WORKCENTER,ERP_BOM,BOM,BOM_VERSION,COMPONENT,COMPONENT_VERSION,TARGET,LOWER_TOLERANCE,UPPER_TOLERANCE,SCALE_FACTOR,MEAN_GAURD_PLUS,MEAN_GAURD_MINUS,ACTIVE,COUNT_FOR_TDO,RESOURCE,PREVIOUS_HANDLE,CONSECUTIVE_THRESHOLD_COUNT,CUMULATIVE_THRESHOLD_COUNT,CUMULATIVE_CONSUMPTION_LIMIT) values(\'' +
-              plant +
-              "','" +
-              order +
-              "','" +
-              material +
-              "','" +
-              operator +
-              "','" +
-              workcenter +
-              "','" +
-              erpBOM +
-              "','" +
-              bom +
-              "','" +
-              bomVersion +
-              "','" +
-              component +
-              "','" +
-              componentVersion +
-              "','" +
-              target +
-              "','" +
-              lowerTolerance * 1000 +
-              "','" +
-              upperTolerance * 1000 +
-              "','" +
-              scaleFactor +
-              "','" +
-              meanGaurdPlus +
-              "','" +
-              meanGaurdMinus +
-              "','" +
-              active +
-              "','" +
-              tdoAdjustmentCycle +
-              "','" +
-              resource +
-              "','" +
-              previoushandle +
-              "','" +
-              consecutiveThreshold +
-              "','" +
-              cumulativeThreshold +
-              "','" +
-              cumulativeCunsumption +
-              "')";
-            console.log('Inserting PersonalizedTolerances SQL :' + queryString);
-            dbConnection.exec(queryString, function (err, result) {
-              if (err) throw err;
-              console.log('Operator Personalized tolerances Data updated successfully');
-              res.send('Operator Personalized tolerances Data updated successfully');
-              dbConnection.disconnect();
-            });
-          });
-        } else {
-          console.log('Personalized data not found');
-          res.send('Personalized data not found');
+  if (!req.body) {
+    res.status(500).send('Mandatory fields missing in payload');
+    return;
+  }
+
+  console.log('InsertUpdatePersoTolerance Req body ', JSON.stringify(req.body));
+
+  var workcenter = req.body.workCenter;
+  var operator = req.body.operator;
+  var component = req.body.component;
+  var componentVersion = req.body.componentVersion;
+  var bom = req.body.bom;
+  var bomVersion = req.body.bomVersion;
+  var order = req.body.order;
+  var material = req.body.material;
+  var plant = req.body.plant;
+  var erpBOM = req.body.erpBOM;
+  var sfc = req.body.sfc;
+  var erpSequence = req.body.erpSequence;
+  var upperTolerance = req.body.upperTolerance;
+  var lowerTolerance = req.body.lowerTolerance;
+  var meanGaurdPlus = req.body.meanGaurdPlus;
+  var meanGaurdMinus = req.body.meanGaurdMinus;
+  var consecutiveThreshold = req.body.consecutiveThreshold;
+  var cumulativeThreshold = req.body.cumulativeThreshold;
+  var cumulativeCunsumption = req.body.cumulativeCunsumption;
+  var tdoAdjustmentCycle = req.body.tdoAdjustmentCycle;
+  var active = 1;
+
+  var sQueryString = `
+    select *
+    from z_personalized_tolerances
+    where plant = '${plant}'
+        and material = '${material}'
+        and erp_bom = '${erpBOM}'
+        and operator = '${operator}'
+        and workcenter = '${workcenter}'
+        and component = '${component}'
+        and component_version = '${componentVersion}'
+        and bom = '${bom}'
+        and bom_version = '${bomVersion}'
+        and "ORDER" = '${order}'
+        and sfc = '${sfc}'
+        and active = '${active}'
+  `;
+
+  console.log('InsertUpdatePersoTolerance Query: ', JSON.stringify(sQueryString));
+
+  const dbConnection = hana.createConnection();
+  dbConnection.connect(dapConnOptions, function (oConnErr) {
+    if (oConnErr) {
+      res.status(500).send('Cannot connect to the db');
+      return;
+    }
+
+    dbConnection.exec(sQueryString, function (oError, aResult) {
+      if (oError) {
+        console.log('InsertUpdatePersoTolerance Query Error-> ', JSON.stringify(oError));
+        res.status(500).send('Error executing query');
+        return;
+      }
+
+      var scaleFactor = aResult[0].SCALE_FACTOR,
+        target = aResult[0].TARGET,
+        resource = aResult[0].RESOURCE,
+        previoushandle = aResult[0].HANDLE,
+        cycleCountForTDO = aResult[0].COUNT_FOR_TDO;
+
+      const sUpdateQuery = `
+        update z_personalized_tolerances
+        set active = 0
+        where plant = '${plant}'
+            and material = '${material}'
+            and erp_bom = '${erpBOM}'
+            and operator = '${operator}'
+            and workcenter = '${workcenter}'
+            and component = '${component}'
+            and component_version = '${componentVersion}'
+            and bom = '${bom}'
+            and bom_version = '${bomVersion}'
+            and "ORDER" = '${order}'
+            and sfc = '${sfc}'
+            and active = '${active}'
+      `;
+      console.log('InsertUpdatePersoTolerance Active Update Query: ', JSON.stringify(sUpdateQuery));
+
+      dbConnection.exec(sUpdateQuery, function (oError, aResult) {
+        if (oError) {
+          console.log('InsertUpdatePersoTolerance Active Update Query Error-> ', JSON.stringify(oError));
+          res.status(500).send('Error executing query');
+          return;
         }
+
+        var sInsertQuery = `
+            insert into z_personalized_tolerances( plant, "ORDER", material, operator, workcenter, erp_bom, bom, bom_version, 
+                component, component_version, target, lower_tolerance, upper_tolerance, scale_factor, MEAN_GAURD_PLUS, 
+                MEAN_GAURD_MINUS, active, count_for_tdo, resource, previous_handle, consecutive_threshold_count, 
+                cumulative_threshold_count, cumulative_consumption_limit, sfc)
+            values('${plant}','${order}','${material}','${operator}','${workcenter}','${erpBOM}','${bom}','${bomVersion}',
+                '${component}','${componentVersion}','${target}','${lowerTolerance * 1000}','${upperTolerance * 1000}',
+                '${scaleFactor}','${meanGaurdPlus}','${meanGaurdMinus}','${active}','${tdoAdjustmentCycle}',
+                '${resource}','${previoushandle}','${consecutiveThreshold}','${cumulativeThreshold}','${cumulativeCunsumption}','${sfc}')
+            `;
+
+        console.log('InsertUpdatePersoTolerance Insert Query: ', JSON.stringify(sInsertQuery));
+
+        dbConnection.exec(sInsertQuery, function (oError) {
+          if (oError) {
+            console.log('InsertUpdatePersoTolerance Insert Query Error-> ', JSON.stringify(oError));
+            res.status(500).send('Error in executing insert query');
+            return;
+          }
+
+          console.log('Operator Personalized tolerances Data updated successfully');
+          res.send('Operator Personalized tolerances Data updated successfully');
+          dbConnection.disconnect();
+        });
       });
     });
-  } else res.send("Request Body can't be empty");
+  });
 });
 
 app.post('/api/insertAndUpdate/operatorOccupancy', async function (req, res) {
@@ -1697,29 +1590,29 @@ app.post('/api/insertOrUpdate/assignenmentDetails', async function (req, res) {
       var resource = req.body.resource;
       var active = req.body.active;
       var batchNo = req.body.batchNo || '';
+      var sfc = req.body.sfc;
 
-      var queryString =
-        "select * from Z_ASSIGNMENT where SEAT_NUMBER='" +
-        seatNumber +
-        "' and COMPONENT_SEQUENCE='" +
-        componentSequence +
-        "' and WORK_CENTER='" +
-        workcenter +
-        "' and COMPONENT='" +
-        component +
-        "' and MATERIAL='" +
-        material +
-        "' and PLANT='" +
-        plant +
-        "'";
-      console.log('/api/insertOrUpdate/assignenmentDetails SQL :' + queryString);
+      var queryString = `
+        select *
+        from z_assignment
+        where plant='${plant}'
+          and work_center='${workcenter}'
+          and material='${material}'
+          and component='${component}'
+          and seat_number='${seatNumber}'
+          and component_sequence='${componentSequence}'`;
+
+      console.log('/api/insertOrUpdate/assignenmentDetails SQL :' + JSON.stringify(queryString));
       dbConnection.exec(queryString, function (err, result) {
         if (err) throw err;
-        console.log(result);
+        console.log(JSON.stringify(result));
         if (result.length == 0) {
-          var queryString = `insert into z_assignment values('${plant}', '${seatNumber}', '${componentSequence}', '${operator}', '${workcenter}', '${component}', '${material}', '${resource}', '${acceptanceDelay}', '${correctionTime}', ADD_SECONDS(CURRENT_UTCTIMESTAMP, 3*36000), '${active}', '${batchNo}')`;
+          var queryString = `insert into z_assignment(plant, seat_number, component_sequence, operator, work_center, component,
+            material, resource, acceptance_delay, correction_time, updated_date_time, active, batch_no) 
+            values('${plant}', '${seatNumber}', '${componentSequence}', '${operator}', '${workcenter}', '${component}', '${material}', '${resource}', 
+            '${acceptanceDelay}', '${correctionTime}', ADD_SECONDS(CURRENT_UTCTIMESTAMP, 3*36000), '${active}', '${batchNo}')`;
 
-          console.log('/api/insertOrUpdate/assignenmentDetails SQL :' + queryString);
+          console.log('/api/insertOrUpdate/assignenmentDetails SQL :' + JSON.stringify(queryString));
           dbConnection.exec(queryString, function (err, result) {
             if (err) throw err;
             console.log(' Assignment Details  Updated successfully');
@@ -1727,45 +1620,21 @@ app.post('/api/insertOrUpdate/assignenmentDetails', async function (req, res) {
             dbConnection.disconnect();
           });
         } else {
-          // var queryString =
-          //   "update  Z_ASSIGNMENT SET OPERATOR='" +
-          //   operator +
-          //   "',RESOURCE='" +
-          //   resource +
-          //   "' ,ACCEPTANCE_DELAY='" +
-          //   acceptanceDelay +
-          //   "',CORRECTION_TIME='" +
-          //   correctionTime +
-          //   "',ACTIVE='" +
-          //   active +
-          //   "', UPDATED_DATE_TIME=ADD_SECONDS(CURRENT_UTCTIMESTAMP, 3 * 3600) WHERE SEAT_NUMBER='" +
-          //   seatNumber +
-          //   "' and COMPONENT_SEQUENCE='" +
-          //   componentSequence +
-          //   "' and WORK_CENTER='" +
-          //   workcenter +
-          //   "' and COMPONENT='" +
-          //   component +
-          //   "' and MATERIAL='" +
-          //   material +
-          //   "' and PLANT='" +
-          //   plant +
-          //   "'";
           var queryString = `
             update z_assignment
-              set operator = '${operator}',
-                resource = '${resource}',
-                acceptance_delay = '${acceptanceDelay}',
-                correction_time = '${correctionTime}',
-                active = '${active}',
-                updated_date_time = add_seconds(current_utctimestamp, 3*3600),
-                batch_no ='${batchNo}'
-              where seat_number = '${seatNumber}'
-                and component_sequence = '${componentSequence}'
-                and work_center = '${workcenter}'
-                and component = '${component}'
-                and material = '${material}'
-                and plant = '${plant}'`;
+            set operator = '${operator}',
+              resource = '${resource}',
+              acceptance_delay = '${acceptanceDelay}',
+              correction_time = '${correctionTime}',
+              active = '${active}',
+              updated_date_time = add_seconds(current_utctimestamp, 3*3600),
+              batch_no ='${batchNo}'
+            where plant = '${plant}'
+              and work_center = '${workcenter}'
+              and material = '${material}'
+              and component = '${component}'
+              and seat_number = '${seatNumber}'
+              and component_sequence = '${componentSequence}'`;
 
           console.log('/api/insertOrUpdate/assignenmentDetails SQL :' + JSON.stringify(queryString));
           dbConnection.exec(queryString, function (err, result) {
@@ -1804,30 +1673,19 @@ app.post('/api/massUpdate/assignenmentDetails', async function (req, res) {
     // Prepare and execute queries
     const queries = req.body.map(async (item) => {
       // Check if the row exists
-      // const checkQuery =
-      //   "select * from Z_ASSIGNMENT where SEAT_NUMBER='" +
-      //   item.seatNumber +
-      //   "' and COMPONENT_SEQUENCE='" +
-      //   item.componentSequence +
-      //   "' and WORK_CENTER='" +
-      //   item.workcenter +
-      //   "' and COMPONENT='" +
-      //   item.component +
-      //   "' and MATERIAL='" +
-      //   item.material +
-      //   "' and PLANT='" +
-      //   item.plant +
-      //   "'";
-      const checkQuery = `select *
-                          from z_assignment
-                          where seat_number = '${item.seatNumber}'
-                            and component_sequence = '${item.componentSequence}'
-                            and work_center = '${item.workcenter}'
-                            and component = '${item.component}'
-                            and material = '${item.material}'
-                            and plant = '${item.plant}'
-                            ${item.batch ? `and batch_no = '${item.batch}'` : ''}`;
-      console.log('CheckQuery: ' + checkQuery);
+
+      const checkQuery = `
+        select *
+        from z_assignment
+        where plant = '${item.plant}'
+          and work_center = '${item.workcenter}'
+          and material = '${item.material}'
+          and component = '${item.component}'
+          and seat_number = '${item.seatNumber}'
+          and component_sequence = '${item.componentSequence}'
+          ${item.batch ? `and batch_no = '${item.batch}'` : ''}`;
+
+      console.log('CheckQuery: ' + JSON.stringify(checkQuery));
 
       const rows = await new Promise((resolve, reject) => {
         dbConnection.exec(checkQuery, (err, result) => {
@@ -1840,7 +1698,8 @@ app.post('/api/massUpdate/assignenmentDetails', async function (req, res) {
 
       // If rows exist, delete them
       if (rows.length > 0) {
-        const updateQuery = `update z_assignment
+        const updateQuery = `
+          update z_assignment
           set operator = '${item.operator}',
             resource = '${item.resource}',
             acceptance_delay = '${item.acceptanceDelay}',
@@ -1855,6 +1714,7 @@ app.post('/api/massUpdate/assignenmentDetails', async function (req, res) {
             and component = '${item.component}'
             and material = '${item.material}'
             and plant = '${item.plant}'`;
+
         console.log('updateQuery: ' + JSON.stringify(updateQuery));
 
         await new Promise((resolve, reject) => {
@@ -1909,8 +1769,16 @@ app.post('/api/get/assignmentDetails', async function (req, res) {
       var plant = req.body.plant;
       var material = req.body.material;
       var workcenter = req.body.workcenter;
-      var queryString = "select * from Z_ASSIGNMENT where MATERIAL='" + material + "' and PLANT='" + plant + "'";
-      console.log('/api/get/assignmentDetails SQL :' + queryString);
+      var sfc = req.body.sfc;
+
+      var queryString = `
+        select *
+        from Z_ASSIGNMENT
+        where material = '${material}'
+          and plant = '${plant}'
+          ${sfc ? `and sfc = '${sfc}'` : ''}`;
+
+      console.log('/api/get/assignmentDetails SQL :' + JSON.stringify(queryString));
       dbConnection.exec(queryString, function (err, result) {
         if (err) throw err;
         console.log(JSON.stringify(result));
@@ -1934,18 +1802,25 @@ app.post('/api/get/detailsForAdminScreen', async function (req, res) {
       var plant = req.body.plant;
       var order = req.body.order;
       var material = req.body.material;
-      var queryString =
-        "select TO_DECIMAL(UPPER_TOLERANCE/1000,10,4) AS UPPER_TOL_IN_KG,TO_DECIMAL(LOWER_TOLERANCE/1000,10,4) AS LOWER_TOL_IN_KG,TO_DECIMAL(TARGET/1000,10,4) AS TARGET_IN_KG, * from Z_PERSONALIZED_TOLERANCES where PLANT='" +
-        plant +
-        "' and MATERIAL='" +
-        material +
-        '\' and "ORDER"=\'' +
-        order +
-        "'and ACTIVE=1";
-      console.log('/api/get/detailsForAdminScreen SQL :' + queryString);
+      var sfc = req.body.sfc;
+
+      var queryString = `
+        select TO_DECIMAL(UPPER_TOLERANCE/1000,10,4) AS UPPER_TOL_IN_KG,
+          TO_DECIMAL(LOWER_TOLERANCE/1000,10,4) AS LOWER_TOL_IN_KG,
+          TO_DECIMAL(TARGET/1000,10,4) AS TARGET_IN_KG,
+          *
+        from z_personalized_tolerances
+        where plant = '${plant}'
+          and material = '${material}'
+          and "ORDER" = '${order}'
+          and sfc = '${sfc}'
+          and active = 1
+      `;
+      console.log('/api/get/detailsForAdminScreen SQL :' + JSON.stringify(queryString));
+
       dbConnection.exec(queryString, function (err, result) {
         if (err) throw err;
-        console.log(result);
+        console.log(JSON.stringify(result));
         console.log('Details for Admin screen Fetched successfully');
         res.send(result);
         dbConnection.disconnect();
@@ -2325,7 +2200,7 @@ app.get('/api/get/consolidatedQuantity', async function (req, res) {
     }
     console.log('Connected');
 
-    var { plant, order, material, phase, workcenter, component, erpSequence, localSequence } = req.query;
+    var { plant, order, material, phase, workcenter, component, erpSequence, localSequence, sfc } = req.query;
     erpSequence = parseInt(erpSequence, 10);
 
     var queryString = `
@@ -2340,6 +2215,7 @@ app.get('/api/get/consolidatedQuantity', async function (req, res) {
         AND COMPONENT = '${component}' 
         AND LOCAL_SEQUENCE = '${localSequence}'
         AND COUNTED_FOR_CONSOLIDATED_POSTING = 0
+        AND SFC = '${sfc}'
       GROUP BY BATCH_NUMBER;`;
 
     console.log('/api/get/consolidatedQuantity SQL:', queryString);
@@ -2357,11 +2233,83 @@ app.get('/api/get/consolidatedQuantity', async function (req, res) {
         // res.json({ value: totalQuantity });
         // res.send(result);
 
-        var aResult = result.map((oItem) => ({ value: parseFloat(oItem.TOTAL_QUANTITY).toFixed(3), batchNo: oItem.BATCH_NUMBER }));
-        res.send(aResult.length > 0 ? aResult[0] : ({value: 0, batchNo: 0}));
+        var aResult = result.map((oItem) => ({ quantity: +parseFloat(oItem.TOTAL_QUANTITY).toFixed(3), batchNo: oItem.BATCH_NUMBER }));
+        // res.send(aResult.length > 0 ? aResult[0] : ({quantity: 0.0, batchNo: ''}));
+        res.send(aResult);
       }
 
       dbConnection.disconnect();
+    });
+  });
+});
+
+app.get('/api/v2/consolidatedQuantity', async function (req, res) {
+  console.log('Inside /api/v2/consolidatedQuantity GET method');
+
+  var { plant, order, material, phase, workcenter, component, erpSequence, localSequence, sfc } = req.query;
+  // erpSequence = parseInt(erpSequence, 10);
+
+  console.log('Params-> ' + JSON.stringify(req.query));
+  if (!plant || !order || !material || !phase || !workcenter || !sfc) {
+    return res.status(400).send('Mandatory parameters missing');
+  }
+
+  let dbConnection = hana.createConnection();
+  dbConnection.connect(dapConnOptions, function (err) {
+    if (err) {
+      return res.status(500).send('Database connection error');
+    }
+
+    let queryString = `
+      select 
+        plant,  
+        order_no,
+        sfc,
+        component,  
+        component_version,
+        header_material,
+        batch_number,
+        bom, bom_version,
+        local_sequence,
+        erp_sequence,
+        sum(quantity)/1000 as total_quantity,
+        UNIT_OF_MEASURE
+      from z_consumption
+      where plant= '${plant}'
+        and header_material = '${material}'
+        and order_no = '${order}'
+        and operation = '${phase}'
+        and workcenter = '${workcenter}'
+        and counted_for_consolidated_posting = 0
+        and sfc = '${sfc}'
+      group by plant, order_no, sfc, component, component_version, header_material, bom, bom_version, batch_number, local_sequence, erp_sequence, unit_of_measure`;
+
+    console.log('/api/v2/consolidatedQuantity: ', JSON.stringify(queryString));
+
+    dbConnection.exec(queryString, function (err, result) {
+      if (err) {
+        console.log(JSON.stringify(err));
+        return res.status(500).send('Error executing query');
+      }
+
+      //Convert object keys in the result
+      var aResult = result.map((oItem) => ({
+        plant: oItem.PLANT,
+        orderNo: oItem.ORDER_NO,
+        sfc: oItem.SFC,
+        component: oItem.COMPONENT,
+        componentVersion: oItem.COMPONENT_VERSION,
+        headerMaterial: oItem.HEADER_MATERIAL,
+        batchNo: oItem.BATCH_NUMBER,
+        bom: oItem.BOM,
+        bomVersion: oItem.BOM_VERSION,
+        localSequence: oItem.LOCAL_SEQUENCE,
+        erpSequence: oItem.ERP_SEQUENCE,
+        totalQuantity: parseFloat(oItem.TOTAL_QUANTITY),
+        uom: oItem.UNIT_OF_MEASURE,
+      }));
+
+      return res.send({ data: aResult, messages: [] });
     });
   });
 });
@@ -2384,8 +2332,9 @@ app.post('/api/update/ConsolidatedPostingData', async function (req, res) {
       var erpSequence = req.body.erpSequence;
       var localSequence = req.body.localSequence;
       var batchNo = req.body.batchNo;
+      var sfc = req.body.sfc;
 
-      if(!batchNo){
+      if (!batchNo) {
         res.status(400).send('Request does not contain batch information');
         return;
       }
@@ -2401,7 +2350,8 @@ app.post('/api/update/ConsolidatedPostingData', async function (req, res) {
           AND COMPONENT = '${component}' 
           AND LOCAL_SEQUENCE = '${localSequence}'
           AND COUNTED_FOR_CONSOLIDATED_POSTING = 0
-          AND BATCH_NUMBER = '${batchNo}'`;
+          AND BATCH_NUMBER = '${batchNo}'
+          AND SFC = '${sfc}' `;
 
       console.log('/api/update/ConsolidatedPostingData SQL :' + queryString);
       dbConnection.exec(queryString, function (err, result) {

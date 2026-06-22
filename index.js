@@ -2273,7 +2273,9 @@ app.get('/api/v2/consolidatedQuantity', async function (req, res) {
         local_sequence,
         erp_sequence,
         sum(quantity)/1000 as total_quantity,
-        UNIT_OF_MEASURE
+        UNIT_OF_MEASURE,
+        max(consumption_date) as max_consumption_date,
+        storage_location
       from z_consumption
       where plant= '${plant}'
         and header_material = '${material}'
@@ -2282,7 +2284,7 @@ app.get('/api/v2/consolidatedQuantity', async function (req, res) {
         and workcenter = '${workcenter}'
         and counted_for_consolidated_posting = 0
         and sfc = '${sfc}'
-      group by plant, order_no, sfc, component, component_version, header_material, bom, bom_version, batch_number, local_sequence, erp_sequence, unit_of_measure`;
+      group by plant, order_no, sfc, component, component_version, header_material, bom, bom_version, batch_number, local_sequence, erp_sequence, unit_of_measure, storage_location`;
 
     console.log('/api/v2/consolidatedQuantity: ', JSON.stringify(queryString));
 
@@ -2291,6 +2293,8 @@ app.get('/api/v2/consolidatedQuantity', async function (req, res) {
         console.log(JSON.stringify(err));
         return res.status(500).send('Error executing query');
       }
+
+      console.log(JSON.stringify(result));
 
       //Convert object keys in the result
       var aResult = result.map((oItem) => ({
@@ -2305,8 +2309,10 @@ app.get('/api/v2/consolidatedQuantity', async function (req, res) {
         bomVersion: oItem.BOM_VERSION,
         localSequence: oItem.LOCAL_SEQUENCE,
         erpSequence: oItem.ERP_SEQUENCE,
-        totalQuantity: parseFloat(oItem.TOTAL_QUANTITY),
+        totalQuantity: parseFloat(parseFloat(oItem.TOTAL_QUANTITY).toFixed(3)), //parseFloat(oItem.TOTAL_QUANTITY),
         uom: oItem.UNIT_OF_MEASURE,
+        maxDateTime: oItem.MAX_CONSUMPTION_DATE,
+        storageLocation: oItem.STORAGE_LOCATION
       }));
 
       return res.send({ data: aResult, messages: [] });
@@ -2333,6 +2339,7 @@ app.post('/api/update/ConsolidatedPostingData', async function (req, res) {
       var localSequence = req.body.localSequence;
       var batchNo = req.body.batchNo;
       var sfc = req.body.sfc;
+      var max_consumption_date = req.body.maxTimestamp;
 
       if (!batchNo) {
         res.status(400).send('Request does not contain batch information');
@@ -2351,7 +2358,8 @@ app.post('/api/update/ConsolidatedPostingData', async function (req, res) {
           AND LOCAL_SEQUENCE = '${localSequence}'
           AND COUNTED_FOR_CONSOLIDATED_POSTING = 0
           AND BATCH_NUMBER = '${batchNo}'
-          AND SFC = '${sfc}' `;
+          AND SFC = '${sfc}'
+          AND CONSUMPTION_DATE <= '${max_consumption_date}' `;
 
       console.log('/api/update/ConsolidatedPostingData SQL :' + queryString);
       dbConnection.exec(queryString, function (err, result) {
